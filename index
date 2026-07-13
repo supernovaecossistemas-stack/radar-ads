@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Radar Ads</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg-0: #0A0B0D; --bg-1: #131418; --bg-2: #1A1C21; --border: #24262B;
+    --text-primary: #EDEDED; --text-secondary: #8A8D93; --text-muted: #5C5F66;
+    --ok: #3DDC97; --ok-dim: #1E5C43;
+    --alert: #FF6B5B; --alert-dim: #6B2A23;
+    --warn: #F2B84B; --warn-dim: #6B4E17;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg-0); color: var(--text-primary); font-family: var(--sans); padding: 40px 48px 80px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { margin-bottom: 32px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .meta { font-family: var(--mono); font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 36px; }
+  .stat { background: var(--bg-1); padding: 18px 20px; }
+  .stat .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .stat .value { font-family: var(--mono); font-size: 24px; font-weight: 500; }
+  .stat .value.alert { color: var(--alert); }
+  .section-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { text-align: left; font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 16px 10px; border-bottom: 1px solid var(--border); }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:hover { background: var(--bg-1); }
+  tbody td { padding: 16px; vertical-align: middle; }
+  .client-name { font-weight: 500; font-size: 14px; }
+  .client-platform { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .budget-value { font-family: var(--mono); font-size: 14px; }
+  .budget-sub { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 20px; }
+  .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge.ok { background: var(--ok-dim); color: var(--ok); }
+  .badge.alert { background: var(--alert-dim); color: var(--alert); }
+  .badge.warn { background: var(--warn-dim); color: var(--warn); }
+  .cpl-cell { min-width: 160px; }
+  .cpl-numbers { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; margin-bottom: 6px; }
+  .cpl-numbers .current { font-weight: 500; }
+  .cpl-numbers .current.bad { color: var(--alert); }
+  .cpl-numbers .current.good { color: var(--ok); }
+  .cpl-numbers .goal { color: var(--text-muted); }
+  .cpl-bar { position: relative; height: 5px; background: var(--bg-2); border-radius: 3px; }
+  .cpl-bar-fill { position: absolute; top: 0; left: 0; bottom: 0; border-radius: 3px; }
+  .cpl-bar-fill.bad { background: var(--alert); }
+  .cpl-bar-fill.good { background: var(--ok); }
+  .cpl-bar-goal { position: absolute; top: -3px; width: 1.5px; height: 11px; background: var(--text-secondary); }
+  footer { margin-top: 32px; font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+  #loading, #error { font-family: var(--mono); font-size: 13px; color: var(--text-muted); padding: 40px 0; }
+  #error { color: var(--alert); display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Radar Ads</h1>
+    <div class="meta" id="last-update">carregando...</div>
+  </header>
+
+  <div class="summary">
+    <div class="stat"><div class="label">Contas monitoradas</div><div class="value" id="stat-total">—</div></div>
+    <div class="stat"><div class="label">Sem orçamento</div><div class="value alert" id="stat-sem-orcamento">—</div></div>
+    <div class="stat"><div class="label">Acima da meta de CPL</div><div class="value alert" id="stat-cpl-alerta">—</div></div>
+    <div class="stat"><div class="label">Gasto total (7d)</div><div class="value" id="stat-gasto">—</div></div>
+  </div>
+
+  <div class="section-label">Clientes</div>
+  <div id="loading">buscando dados no supabase...</div>
+  <div id="error">não foi possível carregar os dados. confira SUPABASE_URL e SUPABASE_ANON_KEY no início do arquivo.</div>
+
+  <table id="table" style="display:none">
+    <thead>
+      <tr><th>Cliente</th><th>Orçamento</th><th>CPL (7d) vs meta</th><th>Status</th></tr>
+    </thead>
+    <tbody id="table-body"></tbody>
+  </table>
+
+  <footer>Meta &nbsp;·&nbsp; CPL calculado sobre os últimos 7 dias</footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Preencha com os dados do seu projeto Supabase (Settings > API)
+  const SUPABASE_URL = "COLE_SUA_SUPABASE_URL_AQUI";
+  const SUPABASE_ANON_KEY = "COLE_SUA_SUPABASE_ANON_KEY_AQUI";
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const fmtMoney = (v) => v == null ? "—" : "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+
+  async function load() {
+    const { data, error } = await supabase.from("client_status").select("*");
+
+    if (error) {
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("error").style.display = "block";
+      console.error(error);
+      return;
+    }
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("table").style.display = "table";
+    document.getElementById("last-update").textContent =
+      "Meta Ads · atualizado em " + new Date().toLocaleString("pt-BR");
+
+    document.getElementById("stat-total").textContent = data.length;
+    document.getElementById("stat-sem-orcamento").textContent = data.filter(c => c.sem_orcamento).length;
+    document.getElementById("stat-cpl-alerta").textContent = data.filter(c => c.cpl_acima_da_meta).length;
+
+    const tbody = document.getElementById("table-body");
+    tbody.innerHTML = "";
+
+    data.forEach(c => {
+      const goal = Number(c.cpl_goal);
+      const cpl = c.cpl_7d != null ? Number(c.cpl_7d) : null;
+      const good = cpl != null && cpl <= goal;
+      const maxScale = goal * 2;
+      const fillPct = cpl != null ? Math.min((cpl / maxScale) * 100, 100) : 0;
+      const goalPct = Math.min((goal / maxScale) * 100, 100);
+
+      let badge = '<span class="badge ok">no alvo</span>';
+      if (c.sem_orcamento) badge = '<span class="badge alert">sem orçamento</span>';
+      else if (c.cpl_acima_da_meta) badge = '<span class="badge alert">CPL acima da meta</span>';
+
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td>
+            <div class="client-name">${c.name}</div>
+            <div class="client-platform">${c.platform ?? "meta"} ads</div>
+          </td>
+          <td>
+            <div class="budget-value">${fmtMoney(c.amount_spent)} gastos</div>
+            <div class="budget-sub">teto ${fmtMoney(c.spend_cap)}</div>
+          </td>
+          <td class="cpl-cell">
+            <div class="cpl-numbers">
+              <span class="current ${cpl == null ? '' : (good ? 'good' : 'bad')}">${fmtMoney(cpl)}</span>
+              <span class="goal">meta ${fmtMoney(goal)}</span>
+            </div>
+            <div class="cpl-bar">
+              <div class="cpl-bar-fill ${good ? 'good' : 'bad'}" style="width:${fillPct}%"></div>
+              <div class="cpl-bar-goal" style="left:${goalPct}%"></div>
+            </div>
+          </td>
+          <td>${badge}</td>
+        </tr>
+      `);
+    });
+  }
+
+  load();
+</script>
+
+
+</body>
+</html>
