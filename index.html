@@ -91,7 +91,7 @@
   const SUPABASE_URL = "https://hlnmbyeiwhytmxjbvyjp.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsbm1ieWVpd2h5dG14amJ2eWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NTQ3MDcsImV4cCI6MjA5OTUzMDcwN30.-f7b7yiSqwtGnhvY6n0B3KGPnAD0ZVMady3I1fuclZw";
 
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const fmtMoney = (v) => v == null ? "—" : "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
 
   async function load() {
