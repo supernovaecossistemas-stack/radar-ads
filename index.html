@@ -68,7 +68,7 @@
     <div class="stat"><div class="label">Contas monitoradas</div><div class="value" id="stat-total">—</div></div>
     <div class="stat"><div class="label">Sem orçamento</div><div class="value alert" id="stat-sem-orcamento">—</div></div>
     <div class="stat"><div class="label">Acima da meta de CPL</div><div class="value alert" id="stat-cpl-alerta">—</div></div>
-    <div class="stat"><div class="label">Gasto total (7d)</div><div class="value" id="stat-gasto">—</div></div>
+    <div class="stat"><div class="label">Orçamento diário total</div><div class="value" id="stat-gasto">—</div></div>
   </div>
 
   <div class="section-label">Clientes</div>
@@ -112,6 +112,8 @@
     document.getElementById("stat-total").textContent = data.length;
     document.getElementById("stat-sem-orcamento").textContent = data.filter(c => c.sem_orcamento).length;
     document.getElementById("stat-cpl-alerta").textContent = data.filter(c => c.cpl_acima_da_meta).length;
+    const totalDailyBudget = data.reduce((sum, c) => sum + (Number(c.daily_budget) || 0), 0);
+    document.getElementById("stat-gasto").textContent = fmtMoney(totalDailyBudget);
 
     const tbody = document.getElementById("table-body");
     tbody.innerHTML = "";
@@ -135,8 +137,8 @@
             <div class="client-platform">${c.platform ?? "meta"} ads</div>
           </td>
           <td>
-            <div class="budget-value">${fmtMoney(c.amount_spent)} gastos</div>
-            <div class="budget-sub">teto ${fmtMoney(c.spend_cap)}</div>
+            <div class="budget-value">${fmtMoney(c.daily_budget)} / dia</div>
+            <div class="budget-sub">restam ${fmtMoney(c.remaining_funds)}</div>
           </td>
           <td class="cpl-cell">
             <div class="cpl-numbers">
