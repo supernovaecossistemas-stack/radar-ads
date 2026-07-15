@@ -105,7 +105,13 @@ async function fetchActiveDailyBudget(adAccountId: string) {
 
 // Fundos disponíveis da conta (só existe em contas pré-pagas).
 async function fetchAccountFunds(adAccountId: string) {
-  const fields = ["balance", "amount_spent", "funding_source_details"].join(",");
+  const fields = [
+    "balance",
+    "amount_spent",
+    "spend_cap",
+    "currency",
+    "funding_source_details",
+  ].join(",");
   const url = `https://graph.facebook.com/${META_API_VERSION}/${adAccountId}` +
     `?fields=${fields}&access_token=${process.env.META_ACCESS_TOKEN}`;
 
@@ -114,10 +120,29 @@ async function fetchAccountFunds(adAccountId: string) {
     throw new Error(`Meta API error for ${adAccountId}: ${res.status} ${await res.text()}`);
   }
   const json = await res.json();
-  // balance = valor devido no momento; para contas pré-pagas com saldo,
-  // o campo prepay_balance dentro de funding_source_details traz os fundos.
-  const prepay = json.funding_source_details?.prepay_balance;
-  const funds = prepay ? Number(prepay) / 100 : null;
+
+  // O saldo pré-pago pode vir em lugares diferentes conforme a conta.
+  // Tentamos as fontes conhecidas, na ordem, e usamos a primeira que existir.
+  let funds: number | null = null;
+  const fsd = json.funding_source_details;
+
+  // 1) Campo numérico direto (algumas contas)
+  const prepay = fsd?.prepay_balance;
+  if (prepay?.amount != null) {
+    funds = Number(prepay.amount) / 100;
+  } else if (typeof prepay === "string" || typeof prepay === "number") {
+    funds = Number(prepay) / 100;
+  }
+
+  // 2) Texto "Saldo disponível (R$548,71 BRL)" — extrai o número de dentro
+  if (funds == null && typeof fsd?.display_string === "string") {
+    const m = fsd.display_string.match(/R\$\s?([\d.]+,\d{2})/);
+    if (m) {
+      // "548,71" -> 548.71
+      funds = Number(m[1].replace(/\./g, "").replace(",", "."));
+    }
+  }
+
   return { funds };
 }
 
