@@ -55,8 +55,57 @@ async function fetchAccountInsights(adAccountId: string) {
   return { spend, leads, cpl };
 }
 
-async function fetchAccountBudget(adAccountId: string) {
-  const fields = ["amount_spent", "spend_cap", "balance"].join(",");
+// Gasto de HOJE da conta (não os últimos 7 dias).
+async function fetchTodaySpend(adAccountId: string) {
+  const url = `https://graph.facebook.com/${META_API_VERSION}/${adAccountId}/insights` +
+    `?fields=spend&date_preset=today&access_token=${process.env.META_ACCESS_TOKEN}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Meta API error for ${adAccountId}: ${res.status} ${await res.text()}`);
+  }
+  const json = await res.json();
+  const row = json.data?.[0] ?? null;
+  return row?.spend ? Number(row.spend) : 0;
+}
+
+// Soma do orçamento diário de todas as campanhas ATIVAS da conta.
+// Campanhas com CBO trazem daily_budget na campanha; campanhas sem CBO
+// trazem o orçamento nos ad sets, então somamos os dois casos.
+async function fetchActiveDailyBudget(adAccountId: string) {
+  let total = 0;
+
+  // Orçamento diário nas campanhas ativas (CBO)
+  const campUrl = `https://graph.facebook.com/${META_API_VERSION}/${adAccountId}/campaigns` +
+    `?fields=daily_budget,effective_status&effective_status=["ACTIVE"]&limit=500` +
+    `&access_token=${process.env.META_ACCESS_TOKEN}`;
+  const campRes = await fetch(campUrl);
+  if (campRes.ok) {
+    const campJson = await campRes.json();
+    for (const c of campJson.data ?? []) {
+      if (c.daily_budget) total += Number(c.daily_budget);
+    }
+  }
+
+  // Orçamento diário nos ad sets ativos (campanhas sem CBO)
+  const setUrl = `https://graph.facebook.com/${META_API_VERSION}/${adAccountId}/adsets` +
+    `?fields=daily_budget,effective_status&effective_status=["ACTIVE"]&limit=500` +
+    `&access_token=${process.env.META_ACCESS_TOKEN}`;
+  const setRes = await fetch(setUrl);
+  if (setRes.ok) {
+    const setJson = await setRes.json();
+    for (const s of setJson.data ?? []) {
+      if (s.daily_budget) total += Number(s.daily_budget);
+    }
+  }
+
+  // Meta devolve valores em centavos
+  return total / 100;
+}
+
+// Fundos disponíveis da conta (só existe em contas pré-pagas).
+async function fetchAccountFunds(adAccountId: string) {
+  const fields = ["balance", "amount_spent", "funding_source_details"].join(",");
   const url = `https://graph.facebook.com/${META_API_VERSION}/${adAccountId}` +
     `?fields=${fields}&access_token=${process.env.META_ACCESS_TOKEN}`;
 
@@ -64,7 +113,12 @@ async function fetchAccountBudget(adAccountId: string) {
   if (!res.ok) {
     throw new Error(`Meta API error for ${adAccountId}: ${res.status} ${await res.text()}`);
   }
-  return res.json();
+  const json = await res.json();
+  // balance = valor devido no momento; para contas pré-pagas com saldo,
+  // o campo prepay_balance dentro de funding_source_details traz os fundos.
+  const prepay = json.funding_source_details?.prepay_balance;
+  const funds = prepay ? Number(prepay) / 100 : null;
+  return { funds };
 }
 
 export default async () => {
@@ -80,9 +134,11 @@ export default async () => {
 
   for (const client of clients) {
     try {
-      const [insights, budget] = await Promise.all([
+      const [insights, todaySpend, dailyBudget, funds] = await Promise.all([
         fetchAccountInsights(client.meta_ad_account_id),
-        fetchAccountBudget(client.meta_ad_account_id),
+        fetchTodaySpend(client.meta_ad_account_id),
+        fetchActiveDailyBudget(client.meta_ad_account_id),
+        fetchAccountFunds(client.meta_ad_account_id),
       ]);
 
       await supabase.from("ad_snapshots").insert({
@@ -91,8 +147,9 @@ export default async () => {
         spend_7d: insights?.spend ?? null,
         leads_7d: insights?.leads ?? null,
         cpl_7d: insights?.cpl ?? null,
-        spend_cap: budget?.spend_cap ? Number(budget.spend_cap) / 100 : null,
-        amount_spent: budget?.amount_spent ? Number(budget.amount_spent) / 100 : null,
+        daily_budget: dailyBudget,
+        today_spend: todaySpend,
+        remaining_funds: funds?.funds ?? null,
         checked_at: new Date().toISOString(),
       });
 
